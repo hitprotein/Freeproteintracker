@@ -3,7 +3,7 @@ import { Manrope, Inter } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
 import CtaButton from "@/components/CtaButton";
-import GoogleAnalytics from "@/components/GoogleAnalytics";
+import CookieConsent from "@/components/CookieConsent";
 import "./globals.css";
 
 const heading = Manrope({
@@ -89,7 +89,7 @@ export default function RootLayout({
             ]),
           }}
         />
-        <GoogleAnalytics />
+        <CookieConsent />
 
         <header className="border-b border-fpt-grey bg-fpt-white">
           <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
