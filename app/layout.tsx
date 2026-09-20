@@ -45,6 +45,7 @@ export const metadata: Metadata = {
       "Track your protein intake for free. Set a daily protein target, add foods, and see how much protein you have left — no account required.",
     url: "https://freeproteintracker.com",
     siteName: "FreeProteinTracker.com",
+    images: [{ url: "/og-image.png", width: 1200, height: 630 }],
     locale: "en_AU",
     type: "website",
   },
@@ -53,6 +54,7 @@ export const metadata: Metadata = {
     title: "Free Protein Tracker — Track Your Protein Intake Free",
     description:
       "Track your protein intake for free. Set a daily protein target, add foods, and see how much protein you have left — no account required.",
+    images: ["/og-image.png"],
   },
 };
 
