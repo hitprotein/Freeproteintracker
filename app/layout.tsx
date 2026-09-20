@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope, Inter } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
@@ -36,7 +36,6 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon-180x180.png",
   },
   manifest: "/site.webmanifest",
-  themeColor: "#FFFFFF",
   verification: {
     google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
   },
@@ -55,6 +54,10 @@ export const metadata: Metadata = {
     description:
       "Track your protein intake for free. Set a daily protein target, add foods, and see how much protein you have left — no account required.",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#FFFFFF",
 };
 
 export default function RootLayout({
