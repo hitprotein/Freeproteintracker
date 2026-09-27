@@ -29,7 +29,9 @@ export default function Tracker() {
   const [history, setHistory] = useState<DaySummary[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const dateRef = useRef(date);
-  dateRef.current = date;
+  useEffect(() => {
+    dateRef.current = date;
+  }, [date]);
 
   const [showAddFood, setShowAddFood] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -50,10 +52,10 @@ export default function Tracker() {
       setTargetDraft(String(loaded.target));
       setEntries(loaded.entries);
       setHistory(loaded.history);
+      setAddMeal(defaultMealForTime());
       setHydrated(true);
     }
     load();
-    setAddMeal(defaultMealForTime());
 
     function onVisible() {
       if (document.visibilityState === "visible" && todayKey() !== dateRef.current) load();

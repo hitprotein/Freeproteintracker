@@ -1,42 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Script from "next/script";
 import { safeGetItem, safeSetItem } from "@/lib/tracker-storage";
 
 const CONSENT_KEY = "fpt_cookie_consent";
+const CONSENT_CHANGED_EVENT = "fpt:consent-changed";
 // Dispatched by the footer's "Cookie settings" link to re-open the banner.
 export const OPEN_COOKIE_SETTINGS_EVENT = "fpt:open-cookie-settings";
 type Consent = "accepted" | "declined" | null;
 
-export default function CookieConsent() {
-  const [consent, setConsent] = useState<Consent>(null);
-  const [hydrated, setHydrated] = useState(false);
-  const gaId = process.env.NEXT_PUBLIC_GA_ID;
+// In-memory fallback so a choice still sticks for this visit when
+// localStorage is unavailable.
+let memoryConsent: Consent = null;
 
-  const [open, setOpen] = useState(false);
+function readConsent(): Consent {
+  const stored = safeGetItem(CONSENT_KEY);
+  return stored === "accepted" || stored === "declined" ? stored : memoryConsent;
+}
+
+function subscribe(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  window.addEventListener(CONSENT_CHANGED_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onChange);
+    window.removeEventListener(CONSENT_CHANGED_EVENT, onChange);
+  };
+}
+
+export default function CookieConsent() {
+  // `undefined` during prerender and hydration: the choice is only known in
+  // the browser, so nothing (banner or GA) renders until then.
+  const consent = useSyncExternalStore<Consent | undefined>(subscribe, readConsent, () => undefined);
+  const [reopened, setReopened] = useState(false);
+  const gaId = process.env.NEXT_PUBLIC_GA_ID;
+  const open = consent === null || (consent !== undefined && reopened);
 
   useEffect(() => {
-    const stored = safeGetItem(CONSENT_KEY);
-    const valid = stored === "accepted" || stored === "declined" ? stored : null;
-    setConsent(valid);
-    setOpen(valid === null);
-    setHydrated(true);
-
-    const reopen = () => setOpen(true);
+    const reopen = () => setReopened(true);
     window.addEventListener(OPEN_COOKIE_SETTINGS_EVENT, reopen);
     return () => window.removeEventListener(OPEN_COOKIE_SETTINGS_EVENT, reopen);
   }, []);
 
   function decide(choice: "accepted" | "declined") {
+    memoryConsent = choice;
     safeSetItem(CONSENT_KEY, choice);
     // Withdrawing consent after GA has already loaded: GA's documented
     // opt-out flag stops any further hits for the rest of this page view.
     if (gaId) {
       (window as unknown as Record<string, boolean>)[`ga-disable-${gaId}`] = choice === "declined";
     }
-    setConsent(choice);
-    setOpen(false);
+    setReopened(false);
+    window.dispatchEvent(new Event(CONSENT_CHANGED_EVENT));
   }
 
   return (
@@ -59,7 +74,7 @@ export default function CookieConsent() {
         </>
       )}
 
-      {hydrated && open && (
+      {open && (
         <div
           role="region"
           aria-label="Cookie consent"
