@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
+import Link from "next/link";
 import CtaButton from "@/components/CtaButton";
 import Tracker from "@/components/Tracker";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 export default function HomePage() {
   return (
@@ -24,12 +30,12 @@ export default function HomePage() {
             >
               Start Tracking Free
             </a>
-            <a
+            <Link
               href="/protein-calculator"
               className="text-sm font-semibold text-fpt-black/70 hover:text-fpt-black"
             >
               Calculate My Protein Target →
-            </a>
+            </Link>
           </div>
         </div>
       </section>

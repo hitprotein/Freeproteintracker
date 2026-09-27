@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Script from "next/script";
+import { safeGetItem, safeSetItem } from "@/lib/tracker-storage";
 
 const CONSENT_KEY = "fpt_cookie_consent";
+// Dispatched by the footer's "Cookie settings" link to re-open the banner.
+export const OPEN_COOKIE_SETTINGS_EVENT = "fpt:open-cookie-settings";
 type Consent = "accepted" | "declined" | null;
 
 export default function CookieConsent() {
@@ -11,15 +14,29 @@ export default function CookieConsent() {
   const [hydrated, setHydrated] = useState(false);
   const gaId = process.env.NEXT_PUBLIC_GA_ID;
 
+  const [open, setOpen] = useState(false);
+
   useEffect(() => {
-    const stored = window.localStorage.getItem(CONSENT_KEY) as Consent;
-    setConsent(stored);
+    const stored = safeGetItem(CONSENT_KEY);
+    const valid = stored === "accepted" || stored === "declined" ? stored : null;
+    setConsent(valid);
+    setOpen(valid === null);
     setHydrated(true);
+
+    const reopen = () => setOpen(true);
+    window.addEventListener(OPEN_COOKIE_SETTINGS_EVENT, reopen);
+    return () => window.removeEventListener(OPEN_COOKIE_SETTINGS_EVENT, reopen);
   }, []);
 
   function decide(choice: "accepted" | "declined") {
-    window.localStorage.setItem(CONSENT_KEY, choice);
+    safeSetItem(CONSENT_KEY, choice);
+    // Withdrawing consent after GA has already loaded: GA's documented
+    // opt-out flag stops any further hits for the rest of this page view.
+    if (gaId) {
+      (window as unknown as Record<string, boolean>)[`ga-disable-${gaId}`] = choice === "declined";
+    }
     setConsent(choice);
+    setOpen(false);
   }
 
   return (
@@ -42,8 +59,12 @@ export default function CookieConsent() {
         </>
       )}
 
-      {hydrated && consent === null && (
-        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-fpt-grey bg-fpt-white px-6 py-5 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+      {hydrated && open && (
+        <div
+          role="region"
+          aria-label="Cookie consent"
+          className="fixed inset-x-0 bottom-0 z-50 border-t border-fpt-grey bg-fpt-white px-6 py-5 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]"
+        >
           <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 sm:flex-row sm:justify-between">
             <p className="text-sm text-fpt-black/70">
               We use cookies to understand site traffic via Google

@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import CtaButton from "@/components/CtaButton";
 import CookieConsent from "@/components/CookieConsent";
+import CookieSettingsButton from "@/components/CookieSettingsButton";
 import "./globals.css";
 
 const heading = Manrope({
@@ -94,15 +95,15 @@ export default function RootLayout({
         <CookieConsent />
 
         <header className="border-b border-fpt-grey bg-fpt-white">
-          <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-            <Link href="/" aria-label="FreeProteinTracker.com home">
+          <nav className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
+            <Link href="/" aria-label="FreeProteinTracker.com home" className="shrink-0">
               <Image
                 src="/header-logo.png"
                 alt="FreeProteinTracker.com"
                 width={1140}
                 height={200}
                 priority
-                className="h-10 w-auto md:h-12"
+                className="h-7 w-auto sm:h-10 md:h-12"
               />
             </Link>
             <div className="flex items-center gap-6">
@@ -112,7 +113,7 @@ export default function RootLayout({
               >
                 Protein Calculator
               </Link>
-              <CtaButton href="https://hitprotein.com.au/download">
+              <CtaButton href="https://hitprotein.com.au/download" size="sm">
                 Try HitProtein
               </CtaButton>
             </div>
@@ -152,6 +153,7 @@ export default function RootLayout({
               >
                 HitProtein App →
               </a>
+              <CookieSettingsButton className="text-fpt-black/70 hover:text-fpt-black" />
             </div>
           </div>
         </footer>
