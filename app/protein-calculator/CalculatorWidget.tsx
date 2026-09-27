@@ -301,7 +301,7 @@ export default function CalculatorWidget() {
               Want to automatically track this target?
             </p>
             <p className="mt-1 text-sm text-fpt-black/60">
-              HitProtein can set your personalised protein target and help
+              HitProtein can set your personalized protein target and help
               you track it every day.
             </p>
             <div className="mt-4">

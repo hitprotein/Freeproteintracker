@@ -115,3 +115,9 @@ export function proteinDensityLabel(food: ServingFood, units: UnitSystem): strin
   const perUnit = (food.proteinPer100 * servingFactor(food, units)) / 100;
   return `${fmt(perUnit)}g protein / ${servingUnitLabel(food, units)}`;
 }
+
+// Formats a metric amount (g or ml) of a food in the current units.
+export function formatFoodAmount(metricAmount: number, food: ServingFood, units: UnitSystem): string {
+  if (units === "metric") return `${fmt(metricAmount, 0)}${food.unit}`;
+  return `${fmt(metricAmount / servingFactor(food, units))} ${servingUnitLabel(food, units)}`;
+}

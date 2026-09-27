@@ -16,6 +16,11 @@ Static Next.js site (localStorage for the tracker, no backend/database).
   proteintracker.com.au are both black-dominant. This site uses white/light
   backgrounds with black+green as accents — same brand palette, genuinely
   different visual weight, so it doesn't read as a reskin.
+- **US-first audience (.com).** Copy is US English (`en-US`), and units
+  default to US (lb, ft/in, oz) for US browsers, metric elsewhere, with a
+  toggle (`lib/units.ts`). The calculator engine stays metric — convert at
+  the edges, never inside `lib/protein-calculator.ts`. Food names are US
+  English; other regional names go in `aliases` so search still finds them.
 - **The tracker is the product**, not a page describing a future product.
   It's embedded directly on the homepage and fully functional with no
   account.

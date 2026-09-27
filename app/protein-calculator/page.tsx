@@ -4,7 +4,7 @@ import CalculatorWidget from "./CalculatorWidget";
 export const metadata: Metadata = {
   title: "Protein Calculator — Free Daily Protein Intake Calculator",
   description:
-    "Calculate your daily protein target for free. Enter your weight, activity level and goal for a personalised estimate — with the methodology shown transparently.",
+    "Calculate your daily protein target for free. Enter your weight, activity level and goal for a personalized estimate — with the methodology shown transparently.",
   alternates: { canonical: "/protein-calculator" },
 };
 
