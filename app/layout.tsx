@@ -47,7 +47,7 @@ export const metadata: Metadata = {
     url: "https://freeproteintracker.com",
     siteName: "FreeProteinTracker.com",
     images: [{ url: "/og-image.png", width: 1200, height: 630 }],
-    locale: "en_AU",
+    locale: "en_US",
     type: "website",
   },
   twitter: {
@@ -69,7 +69,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en-AU" className={`${heading.variable} ${body.variable}`}>
+    <html lang="en-US" className={`${heading.variable} ${body.variable}`}>
       <body>
         <script
           type="application/ld+json"

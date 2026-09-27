@@ -18,6 +18,17 @@ import {
   type TrackerEntry,
 } from "@/lib/tracker-storage";
 import CtaButton from "@/components/CtaButton";
+import UnitToggle from "@/components/UnitToggle";
+import {
+  defaultServing,
+  fmt,
+  formatFoodAmount,
+  proteinDensityLabel,
+  servingToMetric,
+  servingUnitLabel,
+  useUnits,
+  type UnitSystem,
+} from "@/lib/units";
 
 type Entry = TrackerEntry;
 
@@ -37,7 +48,16 @@ export default function Tracker() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
-  const [servingGrams, setServingGrams] = useState("");
+  const units: UnitSystem = useUnits() ?? "metric";
+  // `mode` is an index into the food's household servings ("1 large egg")
+  // or "weight". In weight mode the typed value remembers which units it was
+  // typed in; after a unit switch it falls back to the default in the new
+  // units. In household mode the value is a count, so units don't matter.
+  const [serving, setServing] = useState<{
+    mode: number | "weight";
+    value: string;
+    units: UnitSystem;
+  }>({ mode: "weight", value: "", units: "metric" });
   const [quickGrams, setQuickGrams] = useState("");
   const [quickLabel, setQuickLabel] = useState("");
   const [addMeal, setAddMeal] = useState<Meal>("Breakfast");
@@ -95,29 +115,55 @@ export default function Tracker() {
     }
   }
 
-  const parsedServing = parseFloat(servingGrams);
+  function initialServing(food: FoodItem) {
+    return food.servings?.length
+      ? { mode: 0, value: "1", units }
+      : { mode: "weight" as const, value: String(defaultServing(food, units)), units };
+  }
+
+  const household =
+    selectedFood && typeof serving.mode === "number"
+      ? (selectedFood.servings?.[serving.mode] ?? null)
+      : null;
+  const servingInput =
+    selectedFood && !household && serving.units !== units
+      ? String(defaultServing(selectedFood, units))
+      : serving.value;
+  const parsedServing = parseFloat(servingInput);
   const servingAmount = selectedFood
     ? parsedServing > 0
       ? parsedServing
-      : selectedFood.defaultServingGrams
+      : household
+        ? 1
+        : defaultServing(selectedFood, units)
     : 0;
+  const servingMetric = !selectedFood
+    ? 0
+    : household
+      ? servingAmount * household.amount
+      : servingToMetric(servingAmount, selectedFood, units);
   const selectedProtein = selectedFood
-    ? Math.round((servingAmount * selectedFood.proteinPer100) / 100)
+    ? Math.round((servingMetric * selectedFood.proteinPer100) / 100)
     : 0;
 
   function handleAddFood(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedFood) return;
-    const grams = servingAmount;
     const protein = selectedProtein;
+    const unitLabel = servingUnitLabel(selectedFood, units);
+    const amountText = household
+      ? servingAmount === 1
+        ? household.label
+        : `${fmt(servingAmount)} × ${household.label.replace(/^1 /, "")}`
+      : `${fmt(servingAmount)}${units === "metric" ? "" : " "}${unitLabel}`;
     addEntry({
       id: newId(),
-      name: `${selectedFood.name} (${grams}${selectedFood.unit})`,
+      name: `${selectedFood.name} (${amountText})`,
       protein,
       meal: addMeal,
     });
     setSelectedFood(null);
-    setServingGrams("");
+    setServing({ mode: "weight", value: "", units });
     setSearch("");
     setShowAddFood(false);
   }
@@ -146,17 +192,13 @@ export default function Tracker() {
     setEntries([]);
   }
 
-  // Match every word in any order, so "breast chicken" or "yogurt" style
-  // partial queries still find results.
+  // Match every word in any order, so "breast chicken" still finds results;
+  // aliases cover other regional names ("prawns", "mince", "yoghurt").
   const filteredFoods = useMemo(() => {
-    const terms = search
-      .toLowerCase()
-      .replace(/yogurt/g, "yoghurt")
-      .split(/\s+/)
-      .filter(Boolean);
+    const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
     if (terms.length === 0) return [];
     return FOOD_DATABASE.filter((f) => {
-      const haystack = `${f.name} ${f.category}`.toLowerCase();
+      const haystack = `${f.name} ${f.category} ${f.aliases?.join(" ") ?? ""}`.toLowerCase();
       return terms.every((t) => haystack.includes(t));
     }).slice(0, 8);
   }, [search]);
@@ -169,7 +211,7 @@ export default function Tracker() {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const key = todayKey(d);
-      const label = d.toLocaleDateString("en-AU", { weekday: "narrow" });
+      const label = d.toLocaleDateString("en-US", { weekday: "narrow" });
       if (i === 0) days.push({ date: key, label, total, target });
       else {
         const h = byDate.get(key);
@@ -185,12 +227,12 @@ export default function Tracker() {
         <div>
           <p className="text-sm text-fpt-black/50">Today&apos;s Protein</p>
           <p
-            className={`font-heading text-3xl font-extrabold transition-opacity ${hydrated ? "" : "opacity-0"}`}
+            className={`whitespace-nowrap font-heading text-2xl font-extrabold transition-opacity sm:text-3xl ${hydrated ? "" : "opacity-0"}`}
           >
             {total}g <span className="text-fpt-black/40">/ {target}g</span>
           </p>
         </div>
-        <label className="flex flex-col items-end gap-1 text-xs text-fpt-black/50">
+        <label className="flex shrink-0 flex-col items-end gap-1 whitespace-nowrap text-xs text-fpt-black/50">
           Daily target (g)
           <input
             type="number"
@@ -279,13 +321,13 @@ export default function Tracker() {
                   type="button"
                   onClick={() => {
                     setSelectedFood(f);
-                    setServingGrams(String(f.defaultServingGrams));
+                    setServing(initialServing(f));
                   }}
                   className="block w-full px-3 py-2 text-left text-sm hover:bg-fpt-offwhite"
                 >
                   {f.name}{" "}
                   <span className="text-fpt-black/40">
-                    ({f.proteinPer100}g protein / 100{f.unit})
+                    ({proteinDensityLabel(f, units)})
                   </span>
                 </button>
               ))}
@@ -294,20 +336,46 @@ export default function Tracker() {
 
           {selectedFood && (
             <form onSubmit={handleAddFood} className="mt-3 flex flex-wrap items-end gap-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-semibold">{selectedFood.name}</p>
-                <label className="mt-1 flex items-center gap-2 text-xs text-fpt-black/60">
-                  Serving ({selectedFood.unit})
+                <div className="mt-1 flex items-center gap-2 text-sm">
                   <input
                     type="number"
                     inputMode="decimal"
                     min={0}
                     step="any"
-                    value={servingGrams}
-                    onChange={(e) => setServingGrams(e.target.value)}
-                    className="w-20 rounded-lg border border-fpt-grey px-2 py-1"
+                    aria-label={
+                      household ? "Number of servings" : `Amount (${servingUnitLabel(selectedFood, units)})`
+                    }
+                    value={servingInput}
+                    onChange={(e) => setServing({ ...serving, value: e.target.value, units })}
+                    className="w-16 rounded-lg border border-fpt-grey px-2 py-1.5"
                   />
-                </label>
+                  {selectedFood.servings?.length ? (
+                    <select
+                      aria-label="Serving size"
+                      value={String(household ? serving.mode : "weight")}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setServing(
+                          v === "weight"
+                            ? { mode: "weight", value: String(defaultServing(selectedFood, units)), units }
+                            : { mode: Number(v), value: "1", units }
+                        );
+                      }}
+                      className="min-w-0 max-w-[14rem] rounded-lg border border-fpt-grey px-2 py-1.5"
+                    >
+                      {selectedFood.servings.map((sv, i) => (
+                        <option key={sv.label} value={i}>
+                          {sv.label} ({formatFoodAmount(sv.amount, selectedFood, units)})
+                        </option>
+                      ))}
+                      <option value="weight">{servingUnitLabel(selectedFood, units)}</option>
+                    </select>
+                  ) : (
+                    <span className="text-fpt-black/60">{servingUnitLabel(selectedFood, units)}</span>
+                  )}
+                </div>
               </div>
               <select
                 aria-label="Meal"
@@ -346,10 +414,13 @@ export default function Tracker() {
               with the protein from the label.
             </p>
           )}
-          <p className="mt-3 text-xs text-fpt-black/40">
-            Figures are approximate — protein varies by brand, cut and
-            preparation.
-          </p>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-fpt-black/40">
+              Figures are approximate — protein varies by brand, cut and
+              preparation.
+            </p>
+            <UnitToggle units={units} />
+          </div>
         </div>
       )}
 
