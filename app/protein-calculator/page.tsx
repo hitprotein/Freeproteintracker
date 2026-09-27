@@ -18,7 +18,7 @@ export default function ProteinCalculatorPage() {
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-fpt-black/60">
             A free estimate of your daily protein target, based on your
-            weight, activity level and goal.
+            weight, activity level and goal. Works in pounds or kilograms.
           </p>
         </div>
       </section>
@@ -63,7 +63,7 @@ export default function ProteinCalculatorPage() {
           calculator can capture — body composition, training history and
           individual metabolism all play a role. Treat this as a
           well-reasoned starting point, generally landing in the 1.6–2.4g
-          per kilogram range depending on your goal, rather than a precise
+          per kilogram (about 0.7–1.1g per pound) range depending on your goal, rather than a precise
           medical figure. If you have a specific medical condition, check
           with a doctor or dietitian before making a significant change to
           your protein intake.

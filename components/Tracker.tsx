@@ -18,6 +18,16 @@ import {
   type TrackerEntry,
 } from "@/lib/tracker-storage";
 import CtaButton from "@/components/CtaButton";
+import UnitToggle from "@/components/UnitToggle";
+import {
+  defaultServing,
+  fmt,
+  proteinDensityLabel,
+  servingToMetric,
+  servingUnitLabel,
+  useUnits,
+  type UnitSystem,
+} from "@/lib/units";
 
 type Entry = TrackerEntry;
 
@@ -37,7 +47,13 @@ export default function Tracker() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
-  const [servingGrams, setServingGrams] = useState("");
+  const units: UnitSystem = useUnits() ?? "metric";
+  // The typed serving remembers which units it was typed in; after a unit
+  // switch it falls back to the default serving in the new units.
+  const [serving, setServing] = useState<{ value: string; units: UnitSystem }>({
+    value: "",
+    units: "metric",
+  });
   const [quickGrams, setQuickGrams] = useState("");
   const [quickLabel, setQuickLabel] = useState("");
   const [addMeal, setAddMeal] = useState<Meal>("Breakfast");
@@ -95,29 +111,34 @@ export default function Tracker() {
     }
   }
 
-  const parsedServing = parseFloat(servingGrams);
+  const servingInput =
+    selectedFood && serving.units !== units
+      ? String(defaultServing(selectedFood, units))
+      : serving.value;
+  const parsedServing = parseFloat(servingInput);
   const servingAmount = selectedFood
     ? parsedServing > 0
       ? parsedServing
-      : selectedFood.defaultServingGrams
+      : defaultServing(selectedFood, units)
     : 0;
+  const servingMetric = selectedFood ? servingToMetric(servingAmount, selectedFood, units) : 0;
   const selectedProtein = selectedFood
-    ? Math.round((servingAmount * selectedFood.proteinPer100) / 100)
+    ? Math.round((servingMetric * selectedFood.proteinPer100) / 100)
     : 0;
 
   function handleAddFood(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedFood) return;
-    const grams = servingAmount;
     const protein = selectedProtein;
+    const unitLabel = servingUnitLabel(selectedFood, units);
     addEntry({
       id: newId(),
-      name: `${selectedFood.name} (${grams}${selectedFood.unit})`,
+      name: `${selectedFood.name} (${fmt(servingAmount)}${units === "metric" ? "" : " "}${unitLabel})`,
       protein,
       meal: addMeal,
     });
     setSelectedFood(null);
-    setServingGrams("");
+    setServing({ value: "", units });
     setSearch("");
     setShowAddFood(false);
   }
@@ -279,13 +300,13 @@ export default function Tracker() {
                   type="button"
                   onClick={() => {
                     setSelectedFood(f);
-                    setServingGrams(String(f.defaultServingGrams));
+                    setServing({ value: String(defaultServing(f, units)), units });
                   }}
                   className="block w-full px-3 py-2 text-left text-sm hover:bg-fpt-offwhite"
                 >
                   {f.name}{" "}
                   <span className="text-fpt-black/40">
-                    ({f.proteinPer100}g protein / 100{f.unit})
+                    ({proteinDensityLabel(f, units)})
                   </span>
                 </button>
               ))}
@@ -297,14 +318,14 @@ export default function Tracker() {
               <div>
                 <p className="text-sm font-semibold">{selectedFood.name}</p>
                 <label className="mt-1 flex items-center gap-2 text-xs text-fpt-black/60">
-                  Serving ({selectedFood.unit})
+                  Serving ({servingUnitLabel(selectedFood, units)})
                   <input
                     type="number"
                     inputMode="decimal"
                     min={0}
                     step="any"
-                    value={servingGrams}
-                    onChange={(e) => setServingGrams(e.target.value)}
+                    value={servingInput}
+                    onChange={(e) => setServing({ value: e.target.value, units })}
                     className="w-20 rounded-lg border border-fpt-grey px-2 py-1"
                   />
                 </label>
@@ -346,10 +367,13 @@ export default function Tracker() {
               with the protein from the label.
             </p>
           )}
-          <p className="mt-3 text-xs text-fpt-black/40">
-            Figures are approximate — protein varies by brand, cut and
-            preparation.
-          </p>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-fpt-black/40">
+              Figures are approximate — protein varies by brand, cut and
+              preparation.
+            </p>
+            <UnitToggle units={units} />
+          </div>
         </div>
       )}
 
