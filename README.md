@@ -26,8 +26,11 @@ Static Next.js site (localStorage for the tracker, no backend/database).
 
 ## Setup
 
+Requires Node 22 (pinned via `engines` in package.json; Next.js 16 needs 20.9+).
+
 1. `npm install`
 2. `npm run dev` → http://localhost:3000
+3. `npm run lint` / `npm run build` before pushing
 
 ## Deploying
 

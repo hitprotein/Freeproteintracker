@@ -1,21 +1,37 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, X, RotateCcw } from "lucide-react";
 import { FOOD_DATABASE, type FoodItem } from "@/lib/food-database";
 import { trackEvent } from "@/lib/analytics";
-import { loadTrackerState, TRACKER_STORAGE_KEY, type TrackerEntry } from "@/lib/tracker-storage";
+import {
+  DEFAULT_TARGET,
+  MEALS,
+  defaultMealForTime,
+  entriesTotal,
+  loadTrackerState,
+  newId,
+  saveTrackerState,
+  todayKey,
+  type DaySummary,
+  type Meal,
+  type TrackerEntry,
+} from "@/lib/tracker-storage";
 import CtaButton from "@/components/CtaButton";
-
-type Meal = "Breakfast" | "Lunch" | "Dinner" | "Snacks";
-const MEALS: Meal[] = ["Breakfast", "Lunch", "Dinner", "Snacks"];
 
 type Entry = TrackerEntry;
 
 export default function Tracker() {
-  const [target, setTarget] = useState(150);
+  const [date, setDate] = useState(todayKey);
+  const [target, setTarget] = useState(DEFAULT_TARGET);
+  const [targetDraft, setTargetDraft] = useState(String(DEFAULT_TARGET));
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [history, setHistory] = useState<DaySummary[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const dateRef = useRef(date);
+  useEffect(() => {
+    dateRef.current = date;
+  }, [date]);
 
   const [showAddFood, setShowAddFood] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -26,23 +42,37 @@ export default function Tracker() {
   const [quickLabel, setQuickLabel] = useState("");
   const [addMeal, setAddMeal] = useState<Meal>("Breakfast");
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount, and again whenever the tab regains
+  // focus — a tab left open overnight should roll over to a fresh day.
   useEffect(() => {
-    const loaded = loadTrackerState();
-    setTarget(loaded.target);
-    setEntries(loaded.entries);
-    setHydrated(true);
+    function load() {
+      const loaded = loadTrackerState();
+      setDate(loaded.date);
+      setTarget(loaded.target);
+      setTargetDraft(String(loaded.target));
+      setEntries(loaded.entries);
+      setHistory(loaded.history);
+      setAddMeal(defaultMealForTime());
+      setHydrated(true);
+    }
+    load();
+
+    function onVisible() {
+      if (document.visibilityState === "visible" && todayKey() !== dateRef.current) load();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   // Persist on change (skip the initial pre-hydration render)
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(TRACKER_STORAGE_KEY, JSON.stringify({ target, entries }));
-  }, [target, entries, hydrated]);
+    saveTrackerState({ date, target, entries, history });
+  }, [date, target, entries, history, hydrated]);
 
-  const total = useMemo(() => entries.reduce((sum, e) => sum + e.protein, 0), [entries]);
+  const total = useMemo(() => entriesTotal(entries), [entries]);
   const remaining = Math.max(target - total, 0);
-  const percent = Math.min(Math.round((total / target) * 100), 100);
+  const percent = target > 0 ? Math.min(Math.round((total / target) * 100), 100) : 0;
 
   function fireFirstStartIfNeeded() {
     if (entries.length === 0) trackEvent("tracker_started");
@@ -53,12 +83,35 @@ export default function Tracker() {
     setEntries((prev) => [...prev, entry]);
   }
 
-  function handleAddFood() {
+  function commitTarget() {
+    const v = parseInt(targetDraft, 10);
+    if (!v || v <= 0) {
+      setTargetDraft(String(target));
+      return;
+    }
+    if (v !== target) {
+      setTarget(v);
+      trackEvent("protein_goal_calculated", { source: "manual", target: v });
+    }
+  }
+
+  const parsedServing = parseFloat(servingGrams);
+  const servingAmount = selectedFood
+    ? parsedServing > 0
+      ? parsedServing
+      : selectedFood.defaultServingGrams
+    : 0;
+  const selectedProtein = selectedFood
+    ? Math.round((servingAmount * selectedFood.proteinPer100) / 100)
+    : 0;
+
+  function handleAddFood(e: React.FormEvent) {
+    e.preventDefault();
     if (!selectedFood) return;
-    const grams = parseFloat(servingGrams) || selectedFood.defaultServingGrams;
-    const protein = Math.round((grams * selectedFood.proteinPer100) / 100);
+    const grams = servingAmount;
+    const protein = selectedProtein;
     addEntry({
-      id: crypto.randomUUID(),
+      id: newId(),
       name: `${selectedFood.name} (${grams}${selectedFood.unit})`,
       protein,
       meal: addMeal,
@@ -69,11 +122,12 @@ export default function Tracker() {
     setShowAddFood(false);
   }
 
-  function handleQuickAdd() {
+  function handleQuickAdd(e: React.FormEvent) {
+    e.preventDefault();
     const protein = parseFloat(quickGrams);
     if (!protein || protein <= 0) return;
     addEntry({
-      id: crypto.randomUUID(),
+      id: newId(),
       name: quickLabel.trim() || "Quick add",
       protein: Math.round(protein),
       meal: addMeal,
@@ -92,42 +146,87 @@ export default function Tracker() {
     setEntries([]);
   }
 
-  const filteredFoods =
-    search.trim().length > 0
-      ? FOOD_DATABASE.filter((f) => f.name.toLowerCase().includes(search.toLowerCase())).slice(0, 8)
-      : [];
+  // Match every word in any order, so "breast chicken" or "yogurt" style
+  // partial queries still find results.
+  const filteredFoods = useMemo(() => {
+    const terms = search
+      .toLowerCase()
+      .replace(/yogurt/g, "yoghurt")
+      .split(/\s+/)
+      .filter(Boolean);
+    if (terms.length === 0) return [];
+    return FOOD_DATABASE.filter((f) => {
+      const haystack = `${f.name} ${f.category}`.toLowerCase();
+      return terms.every((t) => haystack.includes(t));
+    }).slice(0, 8);
+  }, [search]);
+
+  // Last 7 days including today, oldest first, for the week strip.
+  const week = useMemo(() => {
+    const byDate = new Map(history.map((h) => [h.date, h]));
+    const days: { date: string; label: string; total: number; target: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = todayKey(d);
+      const label = d.toLocaleDateString("en-AU", { weekday: "narrow" });
+      if (i === 0) days.push({ date: key, label, total, target });
+      else {
+        const h = byDate.get(key);
+        days.push({ date: key, label, total: h?.total ?? 0, target: h?.target ?? target });
+      }
+    }
+    return days;
+  }, [history, total, target]);
 
   return (
     <div className="rounded-card border border-fpt-grey bg-fpt-white p-6 shadow-sm md:p-8">
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm text-fpt-black/50">Today&apos;s Protein</p>
-          <p className="font-heading text-3xl font-extrabold">
+          <p
+            className={`font-heading text-3xl font-extrabold transition-opacity ${hydrated ? "" : "opacity-0"}`}
+          >
             {total}g <span className="text-fpt-black/40">/ {target}g</span>
           </p>
         </div>
         <label className="flex flex-col items-end gap-1 text-xs text-fpt-black/50">
-          Daily target
+          Daily target (g)
           <input
             type="number"
-            value={target}
+            inputMode="numeric"
+            min={1}
+            value={targetDraft}
             onChange={(e) => {
-              const v = parseInt(e.target.value, 10) || 0;
-              setTarget(v);
-              trackEvent("protein_goal_calculated", { source: "manual", target: v });
+              setTargetDraft(e.target.value);
+              const v = parseInt(e.target.value, 10);
+              if (v > 0) setTarget(v);
+            }}
+            onBlur={commitTarget}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
             }}
             className="w-20 rounded-lg border border-fpt-grey px-2 py-1 text-right text-sm font-semibold text-fpt-black"
           />
         </label>
       </div>
 
-      <div className="mt-4 h-3 w-full overflow-hidden rounded-full bg-fpt-offwhite">
+      <div
+        role="progressbar"
+        aria-label="Protein progress towards daily target"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        className="mt-4 h-3 w-full overflow-hidden rounded-full bg-fpt-offwhite"
+      >
         <div
           className="h-full rounded-full bg-fpt-green transition-all"
           style={{ width: `${percent}%` }}
         />
       </div>
-      <p className="mt-2 text-sm text-fpt-black/60">{remaining}g remaining</p>
+      <p className="mt-2 text-sm text-fpt-black/60" aria-live="polite">
+        {remaining}g remaining
+      </p>
 
       <div className="mt-6 flex flex-wrap gap-3">
         <button
@@ -161,7 +260,9 @@ export default function Tracker() {
       {showAddFood && (
         <div className="mt-4 rounded-card border border-fpt-grey bg-fpt-offwhite p-4">
           <input
-            type="text"
+            type="search"
+            aria-label="Search foods"
+            autoFocus
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -175,6 +276,7 @@ export default function Tracker() {
               {filteredFoods.map((f) => (
                 <button
                   key={f.id}
+                  type="button"
                   onClick={() => {
                     setSelectedFood(f);
                     setServingGrams(String(f.defaultServingGrams));
@@ -191,13 +293,16 @@ export default function Tracker() {
           )}
 
           {selectedFood && (
-            <div className="mt-3 flex flex-wrap items-end gap-3">
+            <form onSubmit={handleAddFood} className="mt-3 flex flex-wrap items-end gap-3">
               <div>
                 <p className="text-sm font-semibold">{selectedFood.name}</p>
                 <label className="mt-1 flex items-center gap-2 text-xs text-fpt-black/60">
                   Serving ({selectedFood.unit})
                   <input
                     type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="any"
                     value={servingGrams}
                     onChange={(e) => setServingGrams(e.target.value)}
                     className="w-20 rounded-lg border border-fpt-grey px-2 py-1"
@@ -205,6 +310,7 @@ export default function Tracker() {
                 </label>
               </div>
               <select
+                aria-label="Meal"
                 value={addMeal}
                 onChange={(e) => setAddMeal(e.target.value as Meal)}
                 className="rounded-lg border border-fpt-grey px-2 py-2 text-sm"
@@ -216,12 +322,29 @@ export default function Tracker() {
                 ))}
               </select>
               <button
-                onClick={handleAddFood}
+                type="submit"
                 className="rounded-full bg-fpt-black px-4 py-2 text-sm font-semibold text-fpt-white hover:bg-fpt-black/80"
               >
-                Add
+                Add {selectedProtein}g
               </button>
-            </div>
+            </form>
+          )}
+          {search.trim().length > 0 && filteredFoods.length === 0 && !selectedFood && (
+            <p className="mt-2 text-sm text-fpt-black/60">
+              No match — try{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddFood(false);
+                  setShowQuickAdd(true);
+                  setQuickLabel(search.trim());
+                }}
+                className="font-semibold underline"
+              >
+                Quick Add
+              </button>{" "}
+              with the protein from the label.
+            </p>
           )}
           <p className="mt-3 text-xs text-fpt-black/40">
             Figures are approximate — protein varies by brand, cut and
@@ -232,11 +355,15 @@ export default function Tracker() {
 
       {showQuickAdd && (
         <div className="mt-4 rounded-card border border-fpt-grey bg-fpt-offwhite p-4">
-          <div className="flex flex-wrap items-end gap-3">
+          <form onSubmit={handleQuickAdd} className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-xs text-fpt-black/60">
               Protein (g)
               <input
                 type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                autoFocus
                 value={quickGrams}
                 onChange={(e) => setQuickGrams(e.target.value)}
                 className="w-24 rounded-lg border border-fpt-grey px-2 py-2 text-sm"
@@ -253,6 +380,7 @@ export default function Tracker() {
               />
             </label>
             <select
+              aria-label="Meal"
               value={addMeal}
               onChange={(e) => setAddMeal(e.target.value as Meal)}
               className="rounded-lg border border-fpt-grey px-2 py-2 text-sm"
@@ -264,12 +392,12 @@ export default function Tracker() {
               ))}
             </select>
             <button
-              onClick={handleQuickAdd}
+              type="submit"
               className="rounded-full bg-fpt-black px-4 py-2 text-sm font-semibold text-fpt-white hover:bg-fpt-black/80"
             >
               Add
             </button>
-          </div>
+          </form>
         </div>
       )}
 
@@ -277,7 +405,12 @@ export default function Tracker() {
         <div className="mt-6 space-y-4">
           {MEALS.filter((m) => entries.some((e) => e.meal === m)).map((meal) => (
             <div key={meal}>
-              <p className="text-sm font-semibold text-fpt-black/70">{meal}</p>
+              <p className="text-sm font-semibold text-fpt-black/70">
+                {meal}{" "}
+                <span className="font-normal text-fpt-black/40">
+                  · {entriesTotal(entries.filter((e) => e.meal === meal))}g
+                </span>
+              </p>
               <ul className="mt-1 space-y-1">
                 {entries
                   .filter((e) => e.meal === meal)
@@ -291,7 +424,7 @@ export default function Tracker() {
                       </span>
                       <button
                         onClick={() => removeEntry(e.id)}
-                        aria-label="Remove"
+                        aria-label={`Remove ${e.name}`}
                         className="text-fpt-black/30 hover:text-fpt-black"
                       >
                         <X className="h-4 w-4" />
@@ -301,6 +434,33 @@ export default function Tracker() {
               </ul>
             </div>
           ))}
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="mt-6 border-t border-fpt-grey pt-4">
+          <p className="text-sm font-semibold text-fpt-black/70">Last 7 days</p>
+          <div className="mt-2 flex h-20 items-end gap-2" aria-hidden="true">
+            {week.map((d) => {
+              const pct = d.target > 0 ? Math.min(d.total / d.target, 1) : 0;
+              const hit = d.target > 0 && d.total >= d.target;
+              return (
+                <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
+                  <div className="flex h-14 w-full items-end overflow-hidden rounded-md bg-fpt-offwhite">
+                    <div
+                      className={`w-full rounded-md ${hit ? "bg-fpt-green" : "bg-fpt-black/20"}`}
+                      style={{ height: `${Math.round(pct * 100)}%` }}
+                      title={`${d.date}: ${d.total}g / ${d.target}g`}
+                    />
+                  </div>
+                  <span className="text-[10px] font-semibold text-fpt-black/50">{d.label}</span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="sr-only">
+            {week.map((d) => `${d.date}: ${d.total}g of ${d.target}g`).join(", ")}
+          </p>
         </div>
       )}
 

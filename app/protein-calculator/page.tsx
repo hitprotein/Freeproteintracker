@@ -33,7 +33,7 @@ export default function ProteinCalculatorPage() {
           This calculator starts from a baseline amount of protein per
           kilogram of bodyweight for your selected goal, then adjusts it
           based on your activity level, age, and (if provided) a goal
-          weight. It's the same calculation used across HitProtein's tools —
+          weight. It&apos;s the same calculation used across HitProtein&apos;s tools —
           not a different formula for the free version.
         </p>
         <ul className="mt-4 list-disc space-y-2 pl-6 text-fpt-black/70">
