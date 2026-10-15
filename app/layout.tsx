@@ -63,6 +63,13 @@ export const viewport: Viewport = {
   themeColor: "#FFFFFF",
 };
 
+// Our other sites, the same list (minus this one) on every site.
+const OTHER_SITES = [
+  { name: "HitProtein", description: "The protein tracking app", href: "https://www.hitprotein.com.au" },
+  { name: "ProteinTracker", description: "Protein in Australian foods", href: "https://proteintracker.com.au" },
+  { name: "Free Protein Tracker AU", description: "Protein at Australian takeaway chains", href: "https://freeproteintracker.com.au" },
+];
+
 export default function RootLayout({
   children,
 }: {
@@ -141,19 +148,22 @@ export default function RootLayout({
               <Link href="/protein-calculator" className="text-fpt-black/70 hover:text-fpt-black">
                 Protein Calculator
               </Link>
-              <a
-                href="https://proteintracker.com.au"
-                className="text-fpt-black/70 hover:text-fpt-black"
-              >
-                Protein Foods & Guides →
-              </a>
-              <a
-                href="https://hitprotein.com.au"
-                className="text-fpt-black/70 hover:text-fpt-black"
-              >
-                HitProtein App →
-              </a>
               <CookieSettingsButton className="text-fpt-black/70 hover:text-fpt-black" />
+            </div>
+            <div className="mt-8">
+              <p className="text-xs font-semibold uppercase tracking-wide text-fpt-black/50">
+                Our other sites
+              </p>
+              <ul className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+                {OTHER_SITES.map((site) => (
+                  <li key={site.href}>
+                    <a href={site.href} className="font-semibold text-fpt-black/80 hover:text-fpt-black">
+                      {site.name}
+                    </a>
+                    <span className="block text-fpt-black/60">{site.description}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </footer>
